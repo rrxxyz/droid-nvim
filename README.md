@@ -2,7 +2,7 @@
 
 Android development workflow for Neovim. Build, run, and debug Android apps without leaving your editor.
 
-| Not yet stable, so expect frequent updates (and the occasional breaking change) as I polish the core experience.
+> Not yet stable, so expect frequent updates (and the occasional breaking change) as I polish the core experience.
 
 ## Requirements
 
