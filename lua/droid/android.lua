@@ -3,6 +3,8 @@ local progress = require "droid.progress"
 
 local M = {}
 
+M._cached_sdk_path = nil
+
 -- Simple function to find application ID from build.gradle (inspired by reference code)
 function M.find_application_id()
     local gradle_candidates = { "app/build.gradle", "app/build.gradle.kts" }
@@ -142,32 +144,30 @@ function M.get_app_pid(adb, device_id, package_name, callback)
 end
 
 function M.build_emulator_command(emulator, args)
-    local cfg = config.get()
     local full_args = { emulator, "-netdelay", "none", "-netspeed", "full" }
 
-    -- Add the provided arguments
     for _, arg in ipairs(args) do
         table.insert(full_args, arg)
     end
 
-    -- If Qt platform is configured, use shell with environment variable
-    if cfg.android.qt_qpa_platform then
-        local cmd_str = "QT_QPA_PLATFORM=" .. cfg.android.qt_qpa_platform .. " " .. table.concat(full_args, " ")
-        return { "sh", "-c", cmd_str }, cmd_str
-    else
-        return full_args, table.concat(full_args, " ")
-    end
+    return full_args
 end
 
 function M.detect_android_sdk()
+    if M._cached_sdk_path then
+        return M._cached_sdk_path
+    end
+
     -- Priority: global override > env vars > defaults
     if vim.g.android_sdk and vim.fn.isdirectory(vim.g.android_sdk) == 1 then
-        return vim.g.android_sdk
+        M._cached_sdk_path = vim.g.android_sdk
+        return M._cached_sdk_path
     end
 
     local env = vim.env.ANDROID_SDK_ROOT or vim.env.ANDROID_HOME
     if env and vim.fn.isdirectory(env) == 1 then
-        return env
+        M._cached_sdk_path = env
+        return M._cached_sdk_path
     end
 
     local uv = vim.uv or vim.loop
@@ -187,7 +187,8 @@ function M.detect_android_sdk()
 
     for _, path in ipairs(candidates) do
         if vim.fn.isdirectory(path) == 1 then
-            return path
+            M._cached_sdk_path = path
+            return M._cached_sdk_path
         end
     end
 
@@ -401,7 +402,7 @@ function M.choose_target(adb, emulator, callback)
 end
 
 function M.start_emulator(emulator, avd)
-    local cmd, _ = M.build_emulator_command(emulator, { "-avd", avd })
+    local cmd = M.build_emulator_command(emulator, { "-avd", avd })
     return vim.fn.jobstart(cmd)
 end
 
@@ -445,7 +446,7 @@ function M.launch_emulator()
         if choice then
             vim.notify("Launching Emulator: " .. choice, vim.log.levels.INFO)
 
-            local job_args, _ = M.build_emulator_command(emulator, { "-avd", choice })
+            local job_args = M.build_emulator_command(emulator, { "-avd", choice })
 
             vim.fn.jobstart(job_args, {
                 on_exit = vim.schedule_wrap(function(_, exit_code)
@@ -504,51 +505,116 @@ function M.stop_emulator()
     end)
 end
 
-function M.wipe_emulator_data()
-    local emulator = M.get_emulator_path()
-    if not emulator then
+-- ADB quick actions helper: resolve device + package, then run command
+local function run_adb_on_device(args_fn, success_msg, error_msg)
+    local adb = M.get_adb_path()
+    if not adb then
         return
     end
 
-    local avds = M.get_available_avds(emulator)
-    if #avds == 0 then
-        vim.notify("No Emulators available", vim.log.levels.WARN)
+    local package = M.find_application_id()
+    if not package then
+        vim.notify("Could not detect application ID", vim.log.levels.ERROR)
         return
     end
 
-    vim.ui.select(avds, {
-        prompt = "Select Emulator to wipe data:",
-        format_item = function(avd)
-            return avd
-        end,
-    }, function(choice)
-        if choice then
-            vim.ui.input({
-                prompt = "Wipe data for '" .. choice .. "'? (y/N): ",
-            }, function(input)
-                if input and (input:lower() == "y" or input:lower() == "yes") then
-                    local session_id = progress.start_loading {
-                        command = "DroidEmulatorWipeData",
-                        priority = progress.PRIORITY.LOW,
-                        message = string.format("Wiping data for: %s", choice),
-                    }
-                    local cmd, _ = M.build_emulator_command(emulator, { "-avd", choice, "-wipe-data" })
+    M.get_running_devices(adb, function(devices)
+        if #devices == 0 then
+            vim.notify("No devices available", vim.log.levels.ERROR)
+            return
+        end
 
-                    vim.fn.jobstart(cmd, {
-                        on_exit = vim.schedule_wrap(function(_, exit_code)
-                            if exit_code == 0 then
-                                progress.stop_loading(session_id, true, "Emulator data wiped successfully")
-                            else
-                                progress.stop_loading(session_id, false, "Failed to wipe Emulator data")
-                            end
-                        end),
-                    })
-                else
-                    vim.notify("Wipe data cancelled", vim.log.levels.INFO)
+        local function execute(device_id)
+            local args = args_fn(adb, device_id, package)
+            vim.system(args, {}, function(obj)
+                vim.schedule(function()
+                    if obj.code == 0 then
+                        vim.notify(success_msg .. ": " .. package, vim.log.levels.INFO)
+                    else
+                        vim.notify(error_msg .. ": " .. (obj.stderr or "unknown error"), vim.log.levels.ERROR)
+                    end
+                end)
+            end)
+        end
+
+        local cfg = config.get()
+        if #devices == 1 and cfg.android.auto_select_single_target then
+            execute(devices[1].id)
+        else
+            vim.ui.select(devices, {
+                prompt = "Select device:",
+                format_item = function(d)
+                    return d.name .. " (" .. d.id .. ")"
+                end,
+            }, function(choice)
+                if choice then
+                    execute(choice.id)
                 end
             end)
+        end
+    end)
+end
+
+function M.clear_app_data()
+    run_adb_on_device(function(adb, device_id, package)
+        return { adb, "-s", device_id, "shell", "pm", "clear", package }
+    end, "App data cleared", "Failed to clear app data")
+end
+
+function M.force_stop()
+    run_adb_on_device(function(adb, device_id, package)
+        return { adb, "-s", device_id, "shell", "am", "force-stop", package }
+    end, "App force stopped", "Failed to force stop app")
+end
+
+function M.uninstall_app()
+    run_adb_on_device(function(adb, device_id, package)
+        return { adb, "-s", device_id, "uninstall", package }
+    end, "App uninstalled", "Failed to uninstall app")
+end
+
+function M.mirror()
+    if vim.fn.executable "scrcpy" ~= 1 then
+        vim.notify("scrcpy not found. Install it: https://github.com/Genymobile/scrcpy", vim.log.levels.ERROR)
+        return
+    end
+
+    local adb = M.get_adb_path()
+    if not adb then
+        return
+    end
+
+    M.get_running_devices(adb, function(devices)
+        if #devices == 0 then
+            vim.notify("No devices available", vim.log.levels.ERROR)
+            return
+        end
+
+        local function launch(device_id)
+            vim.notify("Starting scrcpy for " .. device_id, vim.log.levels.INFO)
+            vim.fn.jobstart({ "scrcpy", "-s", device_id }, {
+                on_exit = vim.schedule_wrap(function(_, exit_code)
+                    if exit_code ~= 0 then
+                        vim.notify("scrcpy exited with code " .. exit_code, vim.log.levels.WARN)
+                    end
+                end),
+            })
+        end
+
+        local cfg = config.get()
+        if #devices == 1 and cfg.android.auto_select_single_target then
+            launch(devices[1].id)
         else
-            vim.notify("Wipe data cancelled", vim.log.levels.INFO)
+            vim.ui.select(devices, {
+                prompt = "Select device to mirror:",
+                format_item = function(d)
+                    return d.name .. " (" .. d.id .. ")"
+                end,
+            }, function(choice)
+                if choice then
+                    launch(choice.id)
+                end
+            end)
         end
     end)
 end

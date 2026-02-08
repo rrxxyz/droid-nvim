@@ -79,16 +79,6 @@ function M.clear_content()
     end
 end
 
--- Switch buffer content type (logcat ↔ gradle)
-function M.switch_content(new_type)
-    if M.buffer_id and vim.api.nvim_buf_is_valid(M.buffer_id) then
-        M.stop_current_job()
-        M.buffer_type = new_type
-        M.setup_buffer(new_type)
-        M.clear_content()
-    end
-end
-
 -- Reset buffer state (for when buffer becomes invalid)
 function M.reset_state()
     M.buffer_id = nil
@@ -193,45 +183,16 @@ end
 
 -- Close buffer and reset state
 function M.close()
-    -- Stop any running job
     M.stop_current_job()
 
-    -- Close window
     if M.window_id and vim.api.nvim_win_is_valid(M.window_id) then
         vim.api.nvim_win_close(M.window_id, true)
     end
 
-    -- Delete buffer (with error handling for terminal buffers)
     if M.buffer_id and vim.api.nvim_buf_is_valid(M.buffer_id) then
-        -- For terminal buffers, give a moment for processes to clean up
-        local bufname = vim.api.nvim_buf_get_name(M.buffer_id)
-        if bufname:match "^term://" then
-            local buffer_to_delete = M.buffer_id -- Capture buffer ID before defer_fn
-            vim.defer_fn(function()
-                if buffer_to_delete and vim.api.nvim_buf_is_valid(buffer_to_delete) then
-                    local success, err = pcall(vim.api.nvim_buf_delete, buffer_to_delete, { force = true })
-                    if not success then
-                        -- If force delete still fails, hide the buffer
-                        pcall(function()
-                            vim.bo[buffer_to_delete].buflisted = false
-                            vim.bo[buffer_to_delete].bufhidden = "wipe"
-                        end)
-                    end
-                end
-            end, 100) -- 100ms delay
-        else
-            local success, err = pcall(vim.api.nvim_buf_delete, M.buffer_id, { force = true })
-            if not success then
-                -- If force delete fails, try to hide it instead
-                pcall(function()
-                    vim.bo[M.buffer_id].buflisted = false
-                    vim.bo[M.buffer_id].bufhidden = "wipe"
-                end)
-            end
-        end
+        pcall(vim.api.nvim_buf_delete, M.buffer_id, { force = true })
     end
 
-    -- Reset all state
     M.reset_state()
 end
 

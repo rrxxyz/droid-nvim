@@ -1,8 +1,9 @@
-local config = require "droid.config"
 local progress = require "droid.progress"
 local buffer = require "droid.buffer"
 
 local M = {}
+
+M.selected_variant = "Debug"
 
 local function find_gradlew()
     local gradlew = vim.fs.find("gradlew", { upward = true })[1]
@@ -10,22 +11,18 @@ local function find_gradlew()
         return { gradlew = gradlew, cwd = vim.fs.dirname(gradlew) }
     end
 
-    -- Check if gradlew exists but is not executable
     if gradlew and vim.fn.filereadable(gradlew) == 1 then
         vim.notify(
             "gradlew found but not executable: " .. gradlew .. " - attempting to fix permissions...",
             vim.log.levels.WARN
         )
-
-        -- Try to make it executable
         vim.fn.system { "chmod", "+x", gradlew }
         if vim.v.shell_error == 0 then
             vim.notify("Made gradlew executable: " .. gradlew, vim.log.levels.INFO)
-            return { gradlew = gradlew, cwd = vim.fs.dirname(gradlew) }
         else
-            vim.notify("Could not make gradlew executable (will use shell execution): " .. gradlew, vim.log.levels.WARN)
-            return { gradlew = gradlew, cwd = vim.fs.dirname(gradlew) }
+            vim.notify("Could not make gradlew executable: " .. gradlew, vim.log.levels.WARN)
         end
+        return { gradlew = gradlew, cwd = vim.fs.dirname(gradlew) }
     end
 
     vim.notify("gradlew not found in project", vim.log.levels.ERROR)
@@ -36,11 +33,9 @@ local function run_gradle_task(cwd, gradlew, task, args, callback)
     local cmd_args = vim.iter({ task, args or {} }):flatten():totable()
     local cmd = gradlew .. " " .. table.concat(cmd_args, " ")
 
-    -- Get or create centralized buffer for gradle output with ownership
-    local buf, win = buffer.get_or_create("gradle", "horizontal", "gradle")
+    local buf, win = buffer.get_or_create("gradle", "horizontal")
 
     if not buf then
-        -- Buffer is busy, callback with error
         if callback then
             vim.schedule(function()
                 callback(false, -1)
@@ -49,7 +44,6 @@ local function run_gradle_task(cwd, gradlew, task, args, callback)
         return
     end
 
-    -- Set the terminal job to run in the buffer
     vim.api.nvim_buf_call(buf, function()
         local job_id = vim.fn.jobstart(cmd, {
             term = true,
@@ -57,22 +51,16 @@ local function run_gradle_task(cwd, gradlew, task, args, callback)
             on_exit = function(_, exit_code)
                 buffer.set_current_job(nil)
 
-                -- Show terminal window on completion, auto-focus on failure
                 vim.schedule(function()
-                    -- Ensure window is visible
                     if not buffer.is_valid() then
-                        buffer.get_or_create("gradle", "horizontal", "gradle")
+                        buffer.get_or_create("gradle", "horizontal")
                     end
 
-                    -- Focus window on failure for easier debugging
                     if exit_code ~= 0 then
                         buffer.focus()
                         buffer.scroll_to_bottom()
                     end
 
-                    -- Release buffer lock after job completion
-
-                    -- Run callback
                     if callback then
                         callback(exit_code == 0, exit_code)
                     end
@@ -83,65 +71,46 @@ local function run_gradle_task(cwd, gradlew, task, args, callback)
     end)
 end
 
-function M.open_gradle_window()
-    local buf_info = buffer.get_buffer_info()
-    if not buf_info.buffer_id or buf_info.type ~= "gradle" then
-        return false
-    end
-
-    if buffer.is_valid() then
-        -- Focus existing window
-        buffer.focus()
-    else
-        -- Create new window
-        buffer.get_or_create("gradle", "horizontal")
-    end
-
-    -- Scroll to bottom
-    buffer.scroll_to_bottom()
-    vim.cmd "stopinsert"
-    return true
-end
-
-function M.is_gradle_window_visible()
-    local buf_info = buffer.get_buffer_info()
-    return buf_info.type == "gradle" and buffer.is_valid()
-end
-
-function M.show_log()
-    if M.open_gradle_window() then
+function M.select_variant()
+    local g = find_gradlew()
+    if not g then
         return
-    else
-        vim.notify("No gradle terminal buffer available. Run a gradle command first.", vim.log.levels.WARN)
     end
-end
 
-function M.hide_gradle_window()
-    local buf_info = buffer.get_buffer_info()
-    if buf_info.type == "gradle" and buffer.is_valid() then
-        -- Close window but keep buffer for later reuse
-        local win_id = buf_info.window_id
-        if win_id and vim.api.nvim_win_is_valid(win_id) then
-            vim.api.nvim_win_close(win_id, true)
-            return true
-        end
-    end
-    return false
-end
+    progress.start_spinner "Discovering build variants"
 
-function M.toggle_gradle_window()
-    if M.is_gradle_window_visible() then
-        -- Window is visible, hide it
-        M.hide_gradle_window()
-        vim.notify("Gradle window hidden", vim.log.levels.INFO)
-    else
-        -- Window is hidden, show it
-        if M.open_gradle_window() then
-            vim.notify("Gradle window shown", vim.log.levels.INFO)
-        else
-            vim.notify("No gradle terminal buffer available. Run a gradle command first.", vim.log.levels.WARN)
-        end
-    end
+    vim.system({ g.gradlew, "-q", "tasks", "--group=build" }, { cwd = g.cwd }, function(obj)
+        vim.schedule(function()
+            progress.stop_spinner()
+
+            if obj.code ~= 0 then
+                vim.notify("Failed to discover build variants", vim.log.levels.ERROR)
+                return
+            end
+
+            local variants = {}
+            for line in (obj.stdout or ""):gmatch "[^\r\n]+" do
+                local variant = line:match "^assemble(%w+)%s+%-"
+                if variant then
+                    table.insert(variants, variant)
+                end
+            end
+
+            if #variants == 0 then
+                vim.notify("No build variants found", vim.log.levels.WARN)
+                return
+            end
+
+            vim.ui.select(variants, {
+                prompt = "Select build variant (current: " .. M.selected_variant .. "):",
+            }, function(choice)
+                if choice then
+                    M.selected_variant = choice
+                    vim.notify("Build variant: " .. choice, vim.log.levels.INFO)
+                end
+            end)
+        end)
+    end)
 end
 
 function M.sync()
@@ -150,25 +119,15 @@ function M.sync()
         return
     end
 
-    -- Start loading with global management
-    local session_id = progress.start_loading {
-        command = "DroidSync",
-        priority = progress.PRIORITY.MEDIUM,
-        message = "Syncing dependencies",
-    }
-
-    if not session_id then
-        return -- Loading was queued or cancelled
-    end
+    progress.start_spinner "Syncing dependencies"
 
     run_gradle_task(g.cwd, g.gradlew, "--refresh-dependencies", nil, function(success, exit_code)
-        local message
+        progress.stop_spinner()
         if success then
-            message = "Dependencies synced successfully"
+            vim.notify("Dependencies synced successfully", vim.log.levels.INFO)
         else
-            message = string.format("Sync failed (exit code: %d)", exit_code)
+            vim.notify(string.format("Sync failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
-        progress.stop_loading(session_id, success, message)
     end)
 end
 
@@ -178,53 +137,34 @@ function M.clean()
         return
     end
 
-    -- Start loading with global management
-    local session_id = progress.start_loading {
-        command = "DroidClean",
-        priority = progress.PRIORITY.MEDIUM,
-        message = "Cleaning project",
-    }
-
-    if not session_id then
-        return -- Loading was queued or cancelled
-    end
+    progress.start_spinner "Cleaning project"
 
     run_gradle_task(g.cwd, g.gradlew, "clean", nil, function(success, exit_code)
-        local message
+        progress.stop_spinner()
         if success then
-            message = "Project cleaned successfully"
+            vim.notify("Project cleaned successfully", vim.log.levels.INFO)
         else
-            message = string.format("Clean failed (exit code: %d)", exit_code)
+            vim.notify(string.format("Clean failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
-        progress.stop_loading(session_id, success, message)
     end)
 end
 
-function M.build_debug()
+function M.build()
     local g = find_gradlew()
     if not g then
         return
     end
 
-    -- Start loading with global management
-    local session_id = progress.start_loading {
-        command = "DroidBuildDebug",
-        priority = progress.PRIORITY.HIGH,
-        message = "Building debug APK",
-    }
+    local task = "assemble" .. M.selected_variant
+    progress.start_spinner("Building " .. M.selected_variant .. " APK")
 
-    if not session_id then
-        return -- Loading was queued or cancelled
-    end
-
-    run_gradle_task(g.cwd, g.gradlew, "assembleDebug", nil, function(success, exit_code)
-        local message
+    run_gradle_task(g.cwd, g.gradlew, task, nil, function(success, exit_code)
+        progress.stop_spinner()
         if success then
-            message = "Debug APK built successfully"
+            vim.notify(M.selected_variant .. " APK built successfully", vim.log.levels.INFO)
         else
-            message = string.format("Build failed (exit code: %d)", exit_code)
+            vim.notify(string.format("Build failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
-        progress.stop_loading(session_id, success, message)
     end)
 end
 
@@ -234,30 +174,19 @@ function M.task(task, args)
         return
     end
 
-    -- Start loading with global management
-    local session_id = progress.start_loading {
-        command = "DroidTask",
-        priority = progress.PRIORITY.HIGH,
-        message = "Running task: " .. task,
-    }
-
-    if not session_id then
-        return -- Loading was queued or cancelled
-    end
+    progress.start_spinner("Running task: " .. task)
 
     run_gradle_task(g.cwd, g.gradlew, task, args, function(success, exit_code)
-        local message
+        progress.stop_spinner()
         if success then
-            message = string.format("Task '%s' completed successfully", task)
+            vim.notify(string.format("Task '%s' completed successfully", task), vim.log.levels.INFO)
         else
-            message = string.format("Task '%s' failed (exit code: %d)", task, exit_code)
+            vim.notify(string.format("Task '%s' failed (exit code: %d)", task, exit_code), vim.log.levels.ERROR)
         end
-        progress.stop_loading(session_id, success, message)
     end)
 end
 
--- Pure install function (no launching)
-function M.install_debug(callback)
+function M.install(callback)
     local g = find_gradlew()
     if not g then
         if callback then
@@ -268,15 +197,14 @@ function M.install_debug(callback)
         return
     end
 
-    progress.start_spinner "Installing debug APK"
+    local task = "install" .. M.selected_variant
+    progress.start_spinner("Installing " .. M.selected_variant .. " APK")
 
-    -- Try to get buffer for background operation (no window display)
-    local buf, win = buffer.get_or_create("gradle", nil, "gradle")
+    local buf = buffer.get_or_create("gradle", nil)
 
     if not buf then
-        -- Buffer is busy, show message and queue operation
         progress.stop_spinner()
-        vim.notify("Buffer is busy, install operation queued", vim.log.levels.WARN)
+        vim.notify("Buffer is busy, install operation cancelled", vim.log.levels.WARN)
         if callback then
             vim.schedule(function()
                 callback(false, -1, "Buffer busy")
@@ -285,8 +213,7 @@ function M.install_debug(callback)
         return
     end
 
-    -- Use centralized job management
-    local job_id = vim.fn.jobstart({ g.gradlew, "installDebug" }, {
+    local job_id = vim.fn.jobstart({ g.gradlew, task }, {
         cwd = g.cwd,
         on_exit = function(_, code)
             buffer.set_current_job(nil)
@@ -296,14 +223,12 @@ function M.install_debug(callback)
             local message
 
             if success then
-                message = "Debug APK installed successfully"
+                message = M.selected_variant .. " APK installed successfully"
                 vim.notify(message, vim.log.levels.INFO)
             else
-                message = "Debug APK installation failed (exit code: " .. code .. ")"
+                message = "Installation failed (exit code: " .. code .. ")"
                 vim.notify(message, vim.log.levels.ERROR)
             end
-
-            -- Release buffer lock
 
             if callback then
                 vim.schedule(function()
@@ -316,9 +241,8 @@ function M.install_debug(callback)
     buffer.set_current_job(job_id)
 end
 
--- Sequential build and install function for enhanced DroidRun workflow
--- Args: callback(success, exit_code, message, step) - step indicates which phase failed
-function M.build_and_install_debug(callback)
+-- Sequential build then install for DroidRun workflow
+function M.build_and_install(callback)
     local g = find_gradlew()
     if not g then
         if callback then
@@ -329,10 +253,12 @@ function M.build_and_install_debug(callback)
         return
     end
 
-    progress.start_spinner "Building debug APK"
+    local assemble_task = "assemble" .. M.selected_variant
+    local install_task = "install" .. M.selected_variant
 
-    -- First: Build debug APK using centralized buffer
-    run_gradle_task(g.cwd, g.gradlew, "assembleDebug", nil, function(build_success, build_code)
+    progress.start_spinner("Building " .. M.selected_variant .. " APK")
+
+    run_gradle_task(g.cwd, g.gradlew, assemble_task, nil, function(build_success, build_code)
         if not build_success then
             progress.stop_spinner()
             local message = "Build failed (exit code: " .. build_code .. ")"
@@ -346,11 +272,9 @@ function M.build_and_install_debug(callback)
             return
         end
 
-        -- Build succeeded, now install
-        progress.update_spinner_message "Installing debug APK"
+        progress.update_spinner_message("Installing " .. M.selected_variant .. " APK")
 
-        -- Get buffer for install operation (reuse if gradle buffer is available)
-        local buf, win = buffer.get_or_create("gradle", nil, "gradle")
+        local buf = buffer.get_or_create("gradle", nil)
 
         if not buf then
             progress.stop_spinner()
@@ -364,7 +288,7 @@ function M.build_and_install_debug(callback)
             return
         end
 
-        local job_id = vim.fn.jobstart({ g.gradlew, "installDebug" }, {
+        local job_id = vim.fn.jobstart({ g.gradlew, install_task }, {
             cwd = g.cwd,
             on_exit = function(_, install_code)
                 buffer.set_current_job(nil)
@@ -381,8 +305,6 @@ function M.build_and_install_debug(callback)
                     vim.notify(message, vim.log.levels.ERROR)
                 end
 
-                -- Release buffer lock
-
                 if callback then
                     vim.schedule(function()
                         callback(install_success, install_code, message, "install")
@@ -395,32 +317,6 @@ function M.build_and_install_debug(callback)
     end)
 end
 
--- Composite function: install + launch (moved to keep compatibility)
-function M.install_debug_and_launch(adb, device_id, callback)
-    local config = require "droid.config"
-    local cfg = config.get()
-
-    M.install_debug(function(success, exit_code, message)
-        if not success then
-            -- Install failed, don't launch
-            if callback then
-                vim.schedule(callback)
-            end
-            return
-        end
-
-        -- Launch app if auto_launch_app is enabled
-        if cfg.auto_launch_app then
-            local android = require "droid.android"
-            android.launch_app_on_device(adb, device_id, callback)
-        else
-            if callback then
-                vim.schedule(callback)
-            end
-        end
-    end)
-end
-
 function M.stop()
     local buf_info = buffer.get_buffer_info()
     if buf_info.job_id and buf_info.type == "gradle" then
@@ -430,16 +326,5 @@ function M.stop()
         vim.notify("No active Gradle task", vim.log.levels.WARN)
     end
 end
-
--- Clean up on Vim exit - now handled by centralized buffer management
-vim.api.nvim_create_autocmd("VimLeave", {
-    callback = function()
-        -- Force stop any gradle jobs and release ownership
-        local buf_info = buffer.get_buffer_info()
-        if buf_info.type == "gradle" then
-            buffer.stop_current_job()
-        end
-    end,
-})
 
 return M

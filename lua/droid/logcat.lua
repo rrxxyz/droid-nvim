@@ -167,7 +167,7 @@ function M.apply_filters(user_filters, adb, device_id)
 
             -- Auto-select if only one device and config allows it
             local cfg = config.get()
-            if #devices == 1 and cfg.auto_select_single_target then
+            if #devices == 1 and cfg.android.auto_select_single_target then
                 M.start(tools.adb, devices[1].id, nil, user_filters)
                 return
             end
@@ -318,11 +318,6 @@ function M.start(adb, device_id, mode, override_filters)
     end)
 end
 
--- Legacy function for backward compatibility - now just calls unified start()
-function M.open(adb, device_id, mode)
-    M.start(adb, device_id, mode)
-end
-
 function M.stop()
     local buf_info = buffer.get_buffer_info()
     if buf_info.job_id and buf_info.type == "logcat" then
@@ -352,67 +347,5 @@ function M.is_running()
     local buf_info = buffer.get_buffer_info()
     return buf_info.job_id ~= nil and buf_info.type == "logcat"
 end
-
-function M.toggle_auto_scroll()
-    M.auto_scroll = not M.auto_scroll
-    local status = M.auto_scroll and "enabled" or "disabled"
-    vim.notify("Logcat auto-scroll " .. status, vim.log.levels.INFO)
-    return M.auto_scroll
-end
-
-function M.set_auto_scroll(enabled)
-    M.auto_scroll = enabled
-    local status = M.auto_scroll and "enabled" or "disabled"
-    vim.notify("Logcat auto-scroll " .. status, vim.log.levels.INFO)
-    return M.auto_scroll
-end
-
-function M.get_auto_scroll()
-    return M.auto_scroll
-end
-
-function M.show_current_filters()
-    local filters = M.current_filters
-    if not filters then
-        vim.notify("No filters currently active", vim.log.levels.INFO)
-        return
-    end
-
-    local filter_info = {}
-    if filters.package == "mine" then
-        table.insert(filter_info, "Package: mine (project package)")
-    elseif filters.package and filters.package ~= "none" then
-        table.insert(filter_info, "Package: " .. filters.package)
-    elseif filters.package == "none" then
-        table.insert(filter_info, "Package: none (all packages)")
-    end
-
-    if filters.tag then
-        table.insert(filter_info, "Tag: " .. filters.tag)
-    end
-
-    if filters.log_level and filters.log_level ~= "v" then
-        table.insert(filter_info, "Log Level: " .. filters.log_level .. " and above")
-    else
-        table.insert(filter_info, "Log Level: v (all levels)")
-    end
-
-    if filters.grep_pattern then
-        table.insert(filter_info, "Grep Pattern: " .. filters.grep_pattern)
-    end
-
-    if #filter_info > 0 then
-        vim.notify("Active Logcat Filters:\n" .. table.concat(filter_info, "\n"), vim.log.levels.INFO)
-    else
-        vim.notify("No filters currently active", vim.log.levels.INFO)
-    end
-end
-
--- Clean up on Vim exit
-vim.api.nvim_create_autocmd("VimLeave", {
-    callback = function()
-        buffer.close()
-    end,
-})
 
 return M
