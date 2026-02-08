@@ -155,12 +155,14 @@ function M.attach_cleanup()
         return
     end
 
-    -- Handle buffer deletion
+    -- Handle buffer deletion — buffer is already being wiped,
+    -- so only stop the job and reset state (do NOT call buf_delete again, E937)
     vim.api.nvim_create_autocmd("BufWipeout", {
         buffer = M.buffer_id,
         once = true,
         callback = function()
-            M.close()
+            M.stop_current_job()
+            M.reset_state()
         end,
     })
 
