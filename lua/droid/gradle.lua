@@ -113,9 +113,12 @@ function M.select_variant()
     end)
 end
 
-function M.sync()
+function M.sync(on_complete)
     local g = find_gradlew()
     if not g then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
@@ -128,12 +131,18 @@ function M.sync()
         else
             vim.notify(string.format("Sync failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
+        if on_complete then
+            on_complete()
+        end
     end)
 end
 
-function M.clean()
+function M.clean(on_complete)
     local g = find_gradlew()
     if not g then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
@@ -146,12 +155,18 @@ function M.clean()
         else
             vim.notify(string.format("Clean failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
+        if on_complete then
+            on_complete()
+        end
     end)
 end
 
-function M.build()
+function M.build(on_complete)
     local g = find_gradlew()
     if not g then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
@@ -165,12 +180,18 @@ function M.build()
         else
             vim.notify(string.format("Build failed (exit code: %d)", exit_code), vim.log.levels.ERROR)
         end
+        if on_complete then
+            on_complete()
+        end
     end)
 end
 
-function M.task(task, args)
+function M.task(task, args, on_complete)
     local g = find_gradlew()
     if not g then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
@@ -182,6 +203,9 @@ function M.task(task, args)
             vim.notify(string.format("Task '%s' completed successfully", task), vim.log.levels.INFO)
         else
             vim.notify(string.format("Task '%s' failed (exit code: %d)", task, exit_code), vim.log.levels.ERROR)
+        end
+        if on_complete then
+            on_complete()
         end
     end)
 end

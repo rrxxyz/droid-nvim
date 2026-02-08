@@ -5,13 +5,46 @@ local actions = require "droid.actions"
 
 local M = {}
 
+local active_command = nil
+
+local function clear_active()
+    active_command = nil
+end
+
+local function guarded(name, fn)
+    if active_command then
+        vim.notify(
+            string.format(":%s is already running — wait for it to finish or stop it first", active_command),
+            vim.log.levels.WARN
+        )
+        return
+    end
+    active_command = name
+    fn(clear_active)
+end
+
+local function check_guard(name, fn)
+    if active_command then
+        vim.notify(
+            string.format(":%s is running — %s blocked until it finishes", active_command, name),
+            vim.log.levels.WARN
+        )
+        return
+    end
+    fn()
+end
+
 function M.setup_commands()
     vim.api.nvim_create_user_command("DroidRun", function()
-        actions.build_and_run()
+        guarded("DroidRun", function(done)
+            actions.build_and_run(done)
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidBuild", function()
-        gradle.build()
+        guarded("DroidBuild", function(done)
+            gradle.build(done)
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidBuildVariant", function()
@@ -19,15 +52,21 @@ function M.setup_commands()
     end, {})
 
     vim.api.nvim_create_user_command("DroidClean", function()
-        gradle.clean()
+        guarded("DroidClean", function(done)
+            gradle.clean(done)
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidSync", function()
-        gradle.sync()
+        guarded("DroidSync", function(done)
+            gradle.sync(done)
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidTask", function(opts)
-        gradle.task(opts.fargs[1], table.concat(vim.list_slice(opts.fargs, 2), " "))
+        guarded("DroidTask", function(done)
+            gradle.task(opts.fargs[1], table.concat(vim.list_slice(opts.fargs, 2), " "), done)
+        end)
     end, { nargs = "+", complete = "shellcmd" })
 
     vim.api.nvim_create_user_command("DroidDevices", function()
@@ -35,14 +74,19 @@ function M.setup_commands()
     end, {})
 
     vim.api.nvim_create_user_command("DroidInstall", function()
-        actions.install_only()
+        guarded("DroidInstall", function(done)
+            actions.install_only(done)
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidLogcat", function()
-        actions.logcat_only()
+        check_guard("DroidLogcat", function()
+            actions.logcat_only()
+        end)
     end, {})
 
     vim.api.nvim_create_user_command("DroidLogcatStop", function()
+        clear_active()
         logcat.stop()
     end, {})
 
@@ -85,6 +129,7 @@ function M.setup_commands()
     })
 
     vim.api.nvim_create_user_command("DroidGradleStop", function()
+        clear_active()
         gradle.stop()
     end, {})
 

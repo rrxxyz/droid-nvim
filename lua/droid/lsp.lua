@@ -22,7 +22,7 @@ function M.setup()
             filetypes = { "kotlin" },
             root_markers = { "build.gradle", "build.gradle.kts", "pom.xml" },
         })
-        vim.lsp.enable("kotlin_lsp")
+        vim.lsp.enable "kotlin_lsp"
         return
     end
 
@@ -33,14 +33,14 @@ function M.setup()
             filetypes = { "kotlin" },
             root_markers = { "build.gradle", "build.gradle.kts", "pom.xml" },
         })
-        vim.lsp.enable("kotlin_lsp")
+        vim.lsp.enable "kotlin_lsp"
         return
     end
 
     -- Fall back to nvim-lspconfig
     local has_lspconfig = pcall(require, "lspconfig")
     if has_lspconfig then
-        vim.lsp.enable("kotlin_lsp")
+        vim.lsp.enable "kotlin_lsp"
     end
 end
 

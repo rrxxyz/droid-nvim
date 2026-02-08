@@ -25,8 +25,12 @@ local function handle_post_install(tools, device_id, launch_app)
     end
 end
 
-local function execute_build_install(tools, device_id, launch_app)
+local function execute_build_install(tools, device_id, launch_app, on_complete)
     gradle.build_and_install(function(success, exit_code, message, step)
+        if on_complete then
+            on_complete()
+        end
+
         if not success then
             vim.notify(string.format("Workflow failed at %s step: %s", step, message), vim.log.levels.ERROR)
             return
@@ -55,19 +59,25 @@ function M.select_target(tools, callback)
     android.choose_target(tools.adb, tools.emulator, callback)
 end
 
-function M.build_and_run()
+function M.build_and_run(on_complete)
     local tools = M.get_required_tools()
     if not tools then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
     M.select_target(tools, function(target)
         if not target then
+            if on_complete then
+                on_complete()
+            end
             return
         end
 
         if target.type == "device" then
-            execute_build_install(tools, target.id, true)
+            execute_build_install(tools, target.id, true, on_complete)
         elseif target.type == "avd" then
             progress.start_spinner "Starting emulator"
             android.start_emulator(tools.emulator, target.avd)
@@ -75,27 +85,36 @@ function M.build_and_run()
                 progress.stop_spinner()
                 if not device_id then
                     vim.notify("Failed to start emulator or device not ready", vim.log.levels.ERROR)
+                    if on_complete then
+                        on_complete()
+                    end
                     return
                 end
-                execute_build_install(tools, device_id, true)
+                execute_build_install(tools, device_id, true, on_complete)
             end)
         end
     end)
 end
 
-function M.install_only()
+function M.install_only(on_complete)
     local tools = M.get_required_tools()
     if not tools then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
     M.select_target(tools, function(target)
         if not target then
+            if on_complete then
+                on_complete()
+            end
             return
         end
 
         if target.type == "device" then
-            execute_build_install(tools, target.id, false)
+            execute_build_install(tools, target.id, false, on_complete)
         elseif target.type == "avd" then
             progress.start_spinner "Starting emulator"
             android.start_emulator(tools.emulator, target.avd)
@@ -103,9 +122,12 @@ function M.install_only()
                 progress.stop_spinner()
                 if not device_id then
                     vim.notify("Failed to start emulator or device not ready", vim.log.levels.ERROR)
+                    if on_complete then
+                        on_complete()
+                    end
                     return
                 end
-                execute_build_install(tools, device_id, false)
+                execute_build_install(tools, device_id, false, on_complete)
             end)
         end
     end)
