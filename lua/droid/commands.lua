@@ -141,6 +141,10 @@ function M.setup_commands()
         android.stop_emulator()
     end, {})
 
+    vim.api.nvim_create_user_command("DroidEmulatorCreate", function()
+        android.create_emulator()
+    end, {})
+
     -- ADB quick actions
     vim.api.nvim_create_user_command("DroidClearData", function()
         android.clear_app_data()

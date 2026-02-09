@@ -158,7 +158,13 @@ function M.detect_android_sdk()
         return M._cached_sdk_path
     end
 
-    -- Priority: global override > env vars > defaults
+    -- Priority: config > global override > env vars > defaults
+    local cfg = config.get()
+    if cfg.android.android_home and vim.fn.isdirectory(cfg.android.android_home) == 1 then
+        M._cached_sdk_path = cfg.android.android_home
+        return M._cached_sdk_path
+    end
+
     if vim.g.android_sdk and vim.fn.isdirectory(vim.g.android_sdk) == 1 then
         M._cached_sdk_path = vim.g.android_sdk
         return M._cached_sdk_path
@@ -196,34 +202,30 @@ function M.detect_android_sdk()
     return nil
 end
 
+local is_windows = vim.uv.os_uname().sysname == "Windows_NT"
+
 function M.get_adb_path()
-    local cfg = config.get()
-    local android_sdk = M.detect_android_sdk()
-    if not android_sdk then
+    local sdk = M.detect_android_sdk()
+    if not sdk then
         return nil
     end
-
-    return cfg.android.adb_path
-        or vim.fs.joinpath(
-            android_sdk,
-            "platform-tools",
-            vim.uv.os_uname().sysname == "Windows_NT" and "adb.exe" or "adb"
-        )
+    return vim.fs.joinpath(sdk, "platform-tools", is_windows and "adb.exe" or "adb")
 end
 
 function M.get_emulator_path()
-    local cfg = config.get()
-    local android_sdk = M.detect_android_sdk()
-    if not android_sdk then
+    local sdk = M.detect_android_sdk()
+    if not sdk then
         return nil
     end
+    return vim.fs.joinpath(sdk, "emulator", is_windows and "emulator.exe" or "emulator")
+end
 
-    return cfg.android.emulator_path
-        or vim.fs.joinpath(
-            android_sdk,
-            "emulator",
-            vim.uv.os_uname().sysname == "Windows_NT" and "emulator.exe" or "emulator"
-        )
+function M.get_avdmanager_path()
+    local sdk = M.detect_android_sdk()
+    if not sdk then
+        return nil
+    end
+    return vim.fs.joinpath(sdk, "cmdline-tools", "latest", "bin", is_windows and "avdmanager.bat" or "avdmanager")
 end
 
 function M.get_running_devices(adb, callback)
@@ -425,6 +427,204 @@ function M.get_available_avds(emulator)
     return avds
 end
 
+function M.get_installed_system_images(callback)
+    local sdk = M.detect_android_sdk()
+    if not sdk then
+        callback {}
+        return
+    end
+
+    local sys_img_dir = vim.fs.joinpath(sdk, "system-images")
+    if vim.fn.isdirectory(sys_img_dir) ~= 1 then
+        vim.notify("No system images installed. Install via Android Studio SDK Manager.", vim.log.levels.WARN)
+        callback {}
+        return
+    end
+
+    local images = {}
+
+    -- Walk system-images/{api}/{variant}/{arch} directories
+    for _, api_dir in ipairs(vim.fn.readdir(sys_img_dir)) do
+        local api_path = vim.fs.joinpath(sys_img_dir, api_dir)
+        if vim.fn.isdirectory(api_path) == 1 then
+            for _, variant_dir in ipairs(vim.fn.readdir(api_path)) do
+                local variant_path = vim.fs.joinpath(api_path, variant_dir)
+                if vim.fn.isdirectory(variant_path) == 1 then
+                    for _, arch_dir in ipairs(vim.fn.readdir(variant_path)) do
+                        local arch_path = vim.fs.joinpath(variant_path, arch_dir)
+                        if vim.fn.isdirectory(arch_path) == 1 then
+                            local package = string.format("system-images;%s;%s;%s", api_dir, variant_dir, arch_dir)
+                            local api_level = api_dir:match "android%-(%d+)" or api_dir
+                            local display = string.format("Android %s | %s | %s", api_level, variant_dir, arch_dir)
+                            table.insert(images, { package = package, display = display })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    callback(images)
+end
+
+function M.get_device_definitions(avdmanager, callback)
+    vim.system({ avdmanager, "list", "device" }, {}, function(obj)
+        vim.schedule(function()
+            if obj.code ~= 0 then
+                vim.notify(
+                    "Failed to list device definitions: " .. (obj.stderr or "unknown error"),
+                    vim.log.levels.ERROR
+                )
+                callback {}
+                return
+            end
+
+            local devices = {}
+            local output = obj.stdout or ""
+            local current_id = nil
+            local current_name = nil
+
+            for line in output:gmatch "[^\r\n]+" do
+                local id = line:match '^%s*id:%s*%d+%s+or%s+"([^"]+)"'
+                if id then
+                    current_id = id
+                end
+
+                local name = line:match "^%s*Name:%s*(.+)"
+                if name then
+                    current_name = vim.trim(name)
+                end
+
+                if current_id and current_name then
+                    table.insert(devices, { id = current_id, name = current_name })
+                    current_id = nil
+                    current_name = nil
+                end
+            end
+
+            callback(devices)
+        end)
+    end)
+end
+
+function M.create_emulator()
+    local avdmanager = M.get_avdmanager_path()
+    if not avdmanager then
+        return
+    end
+
+    if vim.fn.executable(avdmanager) ~= 1 then
+        vim.notify(
+            "avdmanager not found at " .. avdmanager .. ". Install Android SDK Command-line Tools.",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
+    -- Step 1: Pick system image
+    M.get_installed_system_images(function(images)
+        if #images == 0 then
+            return
+        end
+
+        vim.ui.select(images, {
+            prompt = "Select system image:",
+            format_item = function(item)
+                return item.display
+            end,
+        }, function(image_choice)
+            if not image_choice then
+                return
+            end
+
+            -- Step 2: Pick device definition
+            M.get_device_definitions(avdmanager, function(devices)
+                if #devices == 0 then
+                    return
+                end
+
+                vim.ui.select(devices, {
+                    prompt = "Select device definition:",
+                    format_item = function(item)
+                        return item.name
+                    end,
+                }, function(device_choice)
+                    if not device_choice then
+                        return
+                    end
+
+                    -- Step 3: Generate default name and prompt for confirmation
+                    local api_level = image_choice.package:match "android%-(%d+)" or "unknown"
+                    local default_name = device_choice.name:gsub("%s+", "_") .. "_API_" .. api_level
+
+                    vim.ui.input({ prompt = "AVD name: ", default = default_name }, function(name)
+                        if not name or name == "" then
+                            return
+                        end
+
+                        -- Sanitize name: replace spaces with underscores, remove special chars
+                        name = name:gsub("%s+", "_"):gsub("[^%w_%-.]", "")
+
+                        -- Step 4: Create the AVD
+                        local cmd = {
+                            avdmanager,
+                            "create",
+                            "avd",
+                            "-n",
+                            name,
+                            "-k",
+                            image_choice.package,
+                            "-d",
+                            device_choice.id,
+                        }
+
+                        local env = nil
+                        local cfg = config.get()
+                        if cfg.android.android_avd_home then
+                            env = { ANDROID_AVD_HOME = cfg.android.android_avd_home }
+                        end
+
+                        vim.notify("Creating emulator: " .. name .. "...", vim.log.levels.INFO)
+
+                        local job_id = vim.fn.jobstart(cmd, {
+                            env = env,
+                            stdin = "pipe",
+                            on_stdout = function() end,
+                            on_stderr = function(_, data)
+                                if data then
+                                    for _, line in ipairs(data) do
+                                        if line:match "Error" or line:match "error" then
+                                            vim.schedule(function()
+                                                vim.notify("avdmanager: " .. line, vim.log.levels.ERROR)
+                                            end)
+                                        end
+                                    end
+                                end
+                            end,
+                            on_exit = vim.schedule_wrap(function(_, exit_code)
+                                if exit_code == 0 then
+                                    vim.notify("Emulator created: " .. name, vim.log.levels.INFO)
+                                else
+                                    vim.notify("Failed to create emulator: " .. name, vim.log.levels.ERROR)
+                                end
+                            end),
+                        })
+
+                        -- Send "no\n" to skip custom hardware profile prompt
+                        if job_id > 0 then
+                            vim.defer_fn(function()
+                                pcall(vim.fn.chansend, job_id, "no\n")
+                            end, 500)
+                        end
+                    end)
+                end)
+            end)
+        end)
+    end)
+end
+
+local CREATE_EMULATOR_SENTINEL = "+ Create New Emulator"
+
 function M.launch_emulator()
     local emulator = M.get_emulator_path()
     if not emulator then
@@ -432,10 +632,7 @@ function M.launch_emulator()
     end
 
     local avds = M.get_available_avds(emulator)
-    if #avds == 0 then
-        vim.notify("No Emulators available", vim.log.levels.WARN)
-        return
-    end
+    table.insert(avds, CREATE_EMULATOR_SENTINEL)
 
     vim.ui.select(avds, {
         prompt = "Select Emulator to launch:",
@@ -443,21 +640,26 @@ function M.launch_emulator()
             return avd
         end,
     }, function(choice)
-        if choice then
-            vim.notify("Launching Emulator: " .. choice, vim.log.levels.INFO)
-
-            local job_args = M.build_emulator_command(emulator, { "-avd", choice })
-
-            vim.fn.jobstart(job_args, {
-                on_exit = vim.schedule_wrap(function(_, exit_code)
-                    if exit_code ~= 0 then
-                        vim.notify("Failed to launch Emulator: " .. choice, vim.log.levels.ERROR)
-                    end
-                end),
-            })
-        else
-            vim.notify("Launch cancelled", vim.log.levels.INFO)
+        if not choice then
+            return
         end
+
+        if choice == CREATE_EMULATOR_SENTINEL then
+            M.create_emulator()
+            return
+        end
+
+        vim.notify("Launching Emulator: " .. choice, vim.log.levels.INFO)
+
+        local job_args = M.build_emulator_command(emulator, { "-avd", choice })
+
+        vim.fn.jobstart(job_args, {
+            on_exit = vim.schedule_wrap(function(_, exit_code)
+                if exit_code ~= 0 then
+                    vim.notify("Failed to launch Emulator: " .. choice, vim.log.levels.ERROR)
+                end
+            end),
+        })
     end)
 end
 

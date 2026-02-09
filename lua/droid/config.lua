@@ -20,8 +20,8 @@ local defaults = {
     },
     android = {
         auto_select_single_target = true,
-        adb_path = nil,
-        emulator_path = nil,
+        android_home = nil,
+        android_avd_home = nil,
         device_wait_timeout_ms = 120000,
         boot_complete_timeout_ms = 120000,
         boot_check_interval_ms = 3000,
