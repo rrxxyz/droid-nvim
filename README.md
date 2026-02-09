@@ -6,7 +6,7 @@ Android development workflow for Neovim. Build, run, and debug Android apps with
 
 ## Requirements
 
-- Neovim 0.11+
+- Neovim 0.10+
 - Android SDK with `adb` in PATH
 - `gradlew` in project root
 - [scrcpy](https://github.com/Genymobile/scrcpy) (optional, for device mirroring)
@@ -67,6 +67,10 @@ require("droid").setup({
             log_level = "v",         -- v, d, i, w, e, f
         },
     },
+    android = {
+        android_home = nil,          -- override ANDROID_HOME / ANDROID_SDK_ROOT env var
+        android_avd_home = nil,      -- override ANDROID_AVD_HOME env var
+    },
 })
 ```
 
@@ -96,6 +100,7 @@ require("droid").setup({
 | --- | --- |
 | `:DroidDevices` | Show device/emulator picker |
 | `:DroidEmulator` | Start emulator |
+| `:DroidEmulatorCreate` | Create new emulator (AVD) |
 | `:DroidEmulatorStop` | Stop emulator |
 | `:DroidMirror` | Mirror device screen (scrcpy) |
 
@@ -136,6 +141,7 @@ vim.keymap.set("n", "<leader>ac", ":DroidClean<CR>")
 -- Device
 vim.keymap.set("n", "<leader>ad", ":DroidDevices<CR>")
 vim.keymap.set("n", "<leader>ae", ":DroidEmulator<CR>")
+vim.keymap.set("n", "<leader>aE", ":DroidEmulatorCreate<CR>")
 vim.keymap.set("n", "<leader>am", ":DroidMirror<CR>")
 
 -- Logcat
