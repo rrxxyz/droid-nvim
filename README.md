@@ -69,7 +69,7 @@ require("droid").setup({
         jre_path = nil,                    -- path to JRE 21+ (auto-detected from bundled/JAVA_HOME/system)
         jdk_for_symbol_resolution = nil,   -- JDK path for kotlin-lsp symbol resolution
         jvm_args = {},                     -- additional JVM arguments for kotlin-lsp
-        root_markers = nil,                -- defaults to { "settings.gradle.kts", "settings.gradle", "local.properties", "gradle.properties" }
+        root_markers = nil,                -- override if needed; kotlin-lsp auto-detects project root by default
         suppress_diagnostics = {},         -- diagnostic codes to hide, e.g. { "PackageDirectoryMismatch" }
         inlay_hints = {
             enabled = true,                -- auto-enable inlay hints on attach

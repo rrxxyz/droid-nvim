@@ -315,8 +315,7 @@ local function start(cfg)
     vim.lsp.config("kotlin_ls", {
         cmd = cmd,
         filetypes = { "kotlin" },
-        root_markers = cfg.lsp.root_markers
-            or { "settings.gradle.kts", "settings.gradle", "local.properties", "gradle.properties" },
+        root_markers = cfg.lsp.root_markers,
         settings = settings,
         init_options = init_opts,
         capabilities = {
