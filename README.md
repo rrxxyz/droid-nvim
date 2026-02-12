@@ -2,7 +2,7 @@
 
 Android development workflow for Neovim. Build, run, and debug Android apps without leaving your editor.
 
-> v0.0.1-alpha01 — Early alpha. Expect frequent updates and occasional breaking changes.
+> Early alpha. Expect frequent updates and occasional breaking changes.
 
 ## Requirements
 
