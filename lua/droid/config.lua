@@ -16,7 +16,26 @@ local defaults = {
     },
     lsp = {
         enabled = true,
-        cmd = nil, -- override: e.g. { "kotlin-ls", "--stdio" } or vim.lsp.rpc.connect(...)
+        jre_path = nil, -- path to JRE 21+ (auto-detected from bundled/JAVA_HOME/system)
+        jdk_for_symbol_resolution = nil, -- JDK path for kotlin-lsp symbol resolution
+        jvm_args = {}, -- additional JVM arguments for kotlin-lsp
+        root_markers = nil, -- defaults to { "settings.gradle.kts", "settings.gradle", "local.properties", "gradle.properties" }
+        suppress_diagnostics = {}, -- diagnostic codes to hide, e.g. { "PackageDirectoryMismatch", "FunctionName" }
+        inlay_hints = {
+            enabled = true,
+            parameters = true,
+            parameters_compiled = true,
+            parameters_excluded = false,
+            types_property = true,
+            types_variable = true,
+            function_return = true,
+            function_parameter = true,
+            lambda_return = true,
+            lambda_receivers_parameters = true,
+            value_ranges = true,
+            kotlin_time = true,
+            call_chains = false,
+        },
     },
     android = {
         auto_select_single_target = true,
