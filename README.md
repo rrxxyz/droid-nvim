@@ -2,7 +2,7 @@
 
 Android development workflow for Neovim. Build, run, and debug Android apps without leaving your editor.
 
-> Early alpha. Expect frequent updates and occasional breaking changes.
+> **Beta release.** Consider pinning to a specific version to avoid breaking changes.
 
 ## Requirements
 
@@ -41,9 +41,10 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 ## Installation
 
 ```lua
--- lazy.nvim
+-- lazy.nvim (recommended: pin to a specific version)
 {
   "rrxxyz/droid-nvim",
+  tag = "v0.0.1-beta",
   ft = { "kotlin", "java", "groovy", "xml" },
   dependencies = {
     "nvim-treesitter/nvim-treesitter",
@@ -53,7 +54,22 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 }
 ```
 
-After installation, install treesitter parsers for syntax highlighting (Optional):
+Or track latest (may include breaking changes):
+
+```lua
+{
+  "rrxxyz/droid-nvim",
+  branch = "main",
+  ft = { "kotlin", "java", "groovy", "xml" },
+  dependencies = {
+    "nvim-treesitter/nvim-treesitter",
+    "mason-org/mason.nvim",
+  },
+  opts = {},
+}
+```
+
+After installation, install treesitter parsers for syntax highlighting (optional):
 
 ```vim
 :TSInstall kotlin java groovy
