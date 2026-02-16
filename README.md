@@ -272,8 +272,8 @@ These commands work in `.kt`, `.java`, and `.groovy` buffers with their respecti
 | `:DroidImports` | Organize imports (Kotlin & Java) |
 | `:DroidFormat` | Format buffer |
 | `:DroidSymbols` | Document symbols (opens location list - navigate with `:lnext`, `:lprev`, `:lfirst`, `:llast`) |
-| `:DroidWorkspaceSymbols` | Workspace symbol search |
-| `:DroidReferences` | Find all references |
+| `:DroidWorkspaceSymbols` | Workspace symbol search (opens location list - navigate with `:lnext`, `:lprev`) |
+| `:DroidReferences` | Find all references (opens quickfix list - navigate with `:cnext`, `:cprev`, `:cfirst`, `:clast`) |
 | `:DroidRename` | Rename symbol |
 | `:DroidCodeAction` | Show code actions |
 | `:DroidQuickFix` | Quick fix for diagnostics on current line |
