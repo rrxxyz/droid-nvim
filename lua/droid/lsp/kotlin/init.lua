@@ -86,6 +86,13 @@ local function make_settings(kotlin_cfg)
         kotlin = {
             compiler = { jvm = { target = "default" } },
         },
+        indexing = {
+            enabled = true, -- Enable workspace indexing for cross-file navigation
+        },
+        externalSources = {
+            useKlsScheme = true,
+            autoConvertToKotlin = false,
+        },
     }
     local ih = kotlin_cfg.inlay_hints
     if ih then
@@ -269,7 +276,9 @@ function M.start(cfg)
     end
 
     local settings = make_settings(kotlin_cfg)
-    local init_opts = {}
+    local init_opts = {
+        storagePath = vim.fn.stdpath("cache") .. "/.droid-kotlin-storage",
+    }
     if kotlin_cfg.jdk_for_symbol_resolution then
         init_opts.defaultJdk = kotlin_cfg.jdk_for_symbol_resolution
     end

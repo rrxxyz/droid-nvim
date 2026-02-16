@@ -271,7 +271,7 @@ These commands work in `.kt`, `.java`, and `.groovy` buffers with their respecti
 | --- | --- |
 | `:DroidImports` | Organize imports (Kotlin & Java) |
 | `:DroidFormat` | Format buffer |
-| `:DroidSymbols` | Document symbols |
+| `:DroidSymbols` | Document symbols (opens location list - navigate with `:lnext`, `:lprev`, `:lfirst`, `:llast`) |
 | `:DroidWorkspaceSymbols` | Workspace symbol search |
 | `:DroidReferences` | Find all references |
 | `:DroidRename` | Rename symbol |
