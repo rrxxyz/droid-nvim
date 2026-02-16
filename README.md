@@ -44,7 +44,7 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 -- lazy.nvim (recommended: pin to a specific version)
 {
   "rrxxyz/droid-nvim",
-  tag = "v0.0.1-beta",
+  tag = "v0.0.1-beta01",
   ft = { "kotlin", "java", "groovy", "xml" },
   dependencies = {
     "nvim-treesitter/nvim-treesitter",
