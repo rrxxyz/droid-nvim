@@ -314,6 +314,36 @@ vim.keymap.set("n", "gs", ":DroidWorkspaceSymbols<CR>")
 vim.keymap.set("n", "gr", ":DroidReferences<CR>")
 ```
 
+## Known Limitations
+
+### Kotlin LSP Cross-File Navigation
+
+JetBrains' Kotlin LSP is experimental and currently has limited support for Android Gradle projects. While hover, completion, and diagnostics work within the current file, go-to-definition and find-references across files may not work reliably for Android projects.
+
+The LSP successfully detects the Gradle project structure but does not build a complete workspace-wide symbol index for Android modules. This is a known limitation of the upstream Kotlin LSP implementation, not droid.nvim.
+
+**What works:**
+- Hover and type information for symbols in the current file
+- Code completion within the current file
+- Diagnostics and error checking
+- Inlay hints
+- Document symbols (`:DroidSymbols`)
+- Organize imports (`:DroidImports`)
+
+**What may not work:**
+- Go-to-definition across files (e.g., jumping from MainActivity to MainViewModel in another file)
+- Find-references across the workspace
+- Workspace symbol search (`:DroidWorkspaceSymbols`)
+
+**Workarounds:**
+- Use `:DroidBuild` to catch compilation errors
+- Use Telescope or grep for finding symbol definitions: `:Telescope live_grep` or `:Telescope grep_string`
+- Use `:DroidReferences` for same-file references (opens quickfix list)
+- Consider using Android Studio for complex cross-file navigation tasks
+- Java LSP (jdtls) has better Android Gradle support and cross-file navigation works reliably
+
+**Note:** This limitation is specific to Kotlin LSP with Android Gradle projects. Pure JVM Kotlin projects may have better support. The JetBrains Kotlin LSP README states: "currently, only JVM-only Kotlin Gradle projects are supported out-of-the box."
+
 ## License
 
 GPLv3
