@@ -43,12 +43,12 @@ function M.setup()
     original_set = vim.diagnostic.set
 
     vim.diagnostic.set = function(ns, bufnr, diagnostics, opts)
-        -- Only intercept for valid Kotlin buffers
+        -- Only intercept for droid.nvim-managed filetypes
         local ft = ""
         if vim.api.nvim_buf_is_valid(bufnr) then
             ft = vim.bo[bufnr].filetype
         end
-        if ft == "kotlin" then
+        if ft == "kotlin" or ft == "java" or ft == "groovy" then
             -- Deep copy and store original diagnostics
             if not stored[bufnr] then
                 stored[bufnr] = {}

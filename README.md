@@ -9,7 +9,7 @@ Android development workflow for Neovim. Build, run, and debug Android apps with
 - Neovim 0.11+
 - Android SDK with `adb` in PATH
 - `gradlew` in project root
-- Java 21+ (for Kotlin LSP)
+- Java 17+ (for jdtls) or Java 21+ (for Kotlin LSP)
 - [scrcpy](https://github.com/Genymobile/scrcpy) (optional, for device mirroring)
 
 ## SDK Environment Setup
@@ -46,7 +46,7 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
   "rrxxyz/droid-nvim",
   dependencies = {
     "nvim-treesitter/nvim-treesitter",
-    -- "mason-org/mason.nvim", -- optional, for :MasonInstall kotlin-lsp
+    "mason-org/mason.nvim", -- Recommended for auto-installing LSPs
   },
   config = function()
     require("droid").setup()
@@ -54,9 +54,14 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 }
 ```
 
-> **Note:** droid-nvim manages Kotlin LSP and treesitter syntax highlighting internally.
-> If you have other plugins configuring Kotlin LSP (e.g., nvim-lspconfig) or treesitter for Kotlin,
-> consider disabling them to avoid conflicts.
+After installation, install treesitter parsers for syntax highlighting:
+
+```vim
+:TSInstall kotlin java groovy
+```
+
+> **Note:** droid-nvim manages Kotlin, Java, and Groovy LSPs internally.
+> If you have other plugins configuring these LSPs (e.g., nvim-lspconfig, nvim-java), consider disabling them to avoid conflicts.
 
 ### Configuration
 
@@ -65,60 +70,108 @@ All options are optional. Defaults shown below:
 ```lua
 require("droid").setup({
     lsp = {
-        enabled = true,
-        jre_path = nil,                    -- path to JRE 21+ (auto-detected from bundled/JAVA_HOME/system)
-        jdk_for_symbol_resolution = nil,   -- JDK path for kotlin-lsp symbol resolution
-        jvm_args = {},                     -- additional JVM arguments for kotlin-lsp
-        root_markers = nil,                -- override if needed; kotlin-lsp auto-detects project root by default
-        suppress_diagnostics = {},         -- diagnostic codes to hide, e.g. { "PackageDirectoryMismatch" }
-        inlay_hints = {
-            enabled = true,                -- auto-enable inlay hints on attach
-            parameters = true,             -- parameter name hints
-            parameters_compiled = true,    -- parameter hints in compiled code
-            parameters_excluded = false,   -- excluded parameter hints
-            types_property = true,         -- property type hints
-            types_variable = true,         -- variable type hints
-            function_return = true,        -- function return type hints
-            function_parameter = true,     -- function parameter type hints
-            lambda_return = true,          -- lambda return type hints
-            lambda_receivers_parameters = true, -- lambda receiver/parameter hints
-            value_ranges = true,           -- value range hints
-            kotlin_time = true,            -- Kotlin Duration hints
-            call_chains = false,           -- function return type in call chains
+        enabled = true,                    -- Master toggle for all LSPs
+        jre_path = nil,                    -- Shared JRE path (auto-detected)
+
+        -- Kotlin LSP (kotlin-lsp)
+        kotlin = {
+            enabled = true,
+            jdk_for_symbol_resolution = nil,
+            jvm_args = {},
+            root_markers = nil,
+            suppress_diagnostics = {},     -- e.g. { "PackageDirectoryMismatch" }
+            inlay_hints = {
+                enabled = true,
+                parameters = true,
+                parameters_compiled = true,
+                parameters_excluded = false,
+                types_property = true,
+                types_variable = true,
+                function_return = true,
+                function_parameter = true,
+                lambda_return = true,
+                lambda_receivers_parameters = true,
+                value_ranges = true,
+                kotlin_time = true,
+                call_chains = false,
+            },
+        },
+
+        -- Java LSP (jdtls)
+        java = {
+            enabled = true,
+            jvm_args = {},
+            root_markers = nil,            -- defaults: gradlew, settings.gradle, AndroidManifest.xml
+            suppress_diagnostics = {},
+            inlay_hints = {
+                enabled = true,
+                parameters = true,
+            },
+        },
+
+        -- Groovy LSP (groovy-language-server)
+        groovy = {
+            enabled = true,
+            root_markers = nil,            -- defaults: build.gradle, settings.gradle
         },
     },
     logcat = {
-        mode = "horizontal",         -- "horizontal" | "vertical" | "float"
+        mode = "horizontal",               -- "horizontal" | "vertical" | "float"
         height = 15,
         filters = {
-            package = "mine",        -- "mine" (auto-detect) or specific package
-            log_level = "v",         -- v, d, i, w, e, f
+            package = "mine",              -- "mine" (auto-detect) or specific package
+            log_level = "v",               -- v, d, i, w, e, f
         },
     },
     android = {
-        android_home = nil,          -- override ANDROID_HOME / ANDROID_SDK_ROOT env var
-        android_avd_home = nil,      -- override ANDROID_AVD_HOME env var
+        android_home = nil,                -- override ANDROID_HOME env var
+        android_avd_home = nil,            -- override ANDROID_AVD_HOME env var
     },
 })
 ```
 
-### Kotlin LSP
+### LSP Support
 
-Kotlin LSP starts lazily when you first open a `.kt` file. It discovers `kotlin-lsp` in this order:
+droid.nvim provides complete LSP support for Android development:
 
-1. **Mason** — `mason/packages/kotlin-lsp/` (install with `:MasonInstall kotlin-lsp`)
-2. **Environment variable** — `$KOTLIN_LSP_DIR`
-3. **System PATH** — `kotlin-lsp` or `kotlin-language-server`
+| Language | LSP Server | Auto-Install | Min Java |
+| -------- | ---------- | ------------ | -------- |
+| Kotlin   | kotlin-lsp | Yes (Mason)  | 21+      |
+| Java     | jdtls      | Yes (Mason)  | 17+      |
+| Groovy   | groovy-language-server | Yes (Mason) | 11+ |
 
-Java is resolved similarly: bundled JRE (Mason) → `lsp.jre_path` config → `$JAVA_HOME` → system `java`. Requires Java 21+.
+Each LSP starts lazily when you first open a file of that type. If not installed, droid.nvim will auto-install it via Mason.
 
-#### Disabling Kotlin LSP
+#### LSP Detection Order
 
-Globally via config:
+For each LSP, droid.nvim searches in this order:
+
+1. **Mason** — `~/.local/share/nvim/mason/packages/{lsp-name}/`
+2. **Environment variable** — `$KOTLIN_LSP_DIR`, `$JDTLS_DIR`, or `$GROOVY_LSP_DIR`
+3. **System PATH** — `kotlin-lsp`, `jdtls`, or `groovy-language-server`
+4. **Auto-install via Mason** — If not found, automatically installs
+
+Java is resolved similarly: `lsp.jre_path` config → `$JAVA_HOME` → system `java`.
+
+#### Disabling LSPs
+
+Disable all LSPs:
 
 ```lua
 require("droid").setup({
     lsp = { enabled = false },
+})
+```
+
+Disable specific LSP:
+
+```lua
+require("droid").setup({
+    lsp = {
+        kotlin = { enabled = true },
+        java = { enabled = false },   -- Disable Java LSP
+        groovy = { enabled = false }, -- Disable Groovy LSP
+    },
 })
 ```
 
@@ -130,7 +183,7 @@ vim.b.droid_lsp_disabled = true
 
 #### Per-project config
 
-Create a `.droid-lsp.lua` in your project root to override LSP settings per-project:
+Create a `.droid-lsp.lua` in your project root to override Kotlin LSP settings per-project:
 
 ```lua
 -- .droid-lsp.lua
@@ -142,7 +195,7 @@ return {
 
 #### Decompilation
 
-Navigating to a class from a dependency (e.g., go-to-definition on a library symbol) automatically decompiles the `.class` file via `jar://` and `jrt://` protocol handlers.
+Navigating to a class from a dependency (e.g., go-to-definition on a library symbol) automatically decompiles the `.class` file via `jar://` and `jrt://` protocol handlers. Works with both Kotlin and Java LSPs.
 
 ## Commands
 
@@ -195,14 +248,14 @@ Navigating to a class from a dependency (e.g., go-to-definition on a library sym
 
 Combine filters: `:DroidLogcatFilter tag=MyTag log_level=d`
 
-### Kotlin LSP
+### LSP Commands
 
-These commands are available in `.kt` buffers with `kotlin_ls` attached.
+These commands work in `.kt`, `.java`, and `.groovy` buffers with their respective LSP attached.
 
 | Command | Description |
 | --- | --- |
-| `:DroidImports` | Organize imports |
-| `:DroidFormat` | Format buffer (IntelliJ IDEA rules) |
+| `:DroidImports` | Organize imports (Kotlin & Java) |
+| `:DroidFormat` | Format buffer |
 | `:DroidSymbols` | Document symbols |
 | `:DroidWorkspaceSymbols` | Workspace symbol search |
 | `:DroidReferences` | Find all references |
@@ -211,10 +264,10 @@ These commands are available in `.kt` buffers with `kotlin_ls` attached.
 | `:DroidQuickFix` | Quick fix for diagnostics on current line |
 | `:DroidInlayHintsToggle` | Toggle inlay hints for current buffer |
 | `:DroidHintsToggle` | Toggle HINT-severity diagnostics |
-| `:DroidExportWorkspace` | Export workspace config to JSON |
-| `:DroidCleanWorkspace` | Stop LSP and clean cached workspace |
-| `:DroidLspStop` | Stop kotlin_ls |
-| `:DroidLspRestart` | Restart kotlin_ls |
+| `:DroidExportWorkspace` | Export workspace config to JSON (Kotlin only) |
+| `:DroidCleanWorkspace` | Stop all LSPs and clean cached workspaces |
+| `:DroidLspStop` | Stop all LSP servers |
+| `:DroidLspRestart` | Restart all LSP servers |
 
 ## Keybindings
 
@@ -239,9 +292,11 @@ vim.keymap.set("n", "<leader>am", ":DroidMirror<CR>")
 vim.keymap.set("n", "<leader>al", ":DroidLogcat<CR>")
 vim.keymap.set("n", "<leader>ax", ":DroidLogcatStop<CR>")
 
--- Kotlin LSP
+-- LSP
 vim.keymap.set("n", "<leader>ao", ":DroidImports<CR>")
 vim.keymap.set("n", "<leader>af", ":DroidFormat<CR>")
+vim.keymap.set("n", "gs", ":DroidWorkspaceSymbols<CR>")
+vim.keymap.set("n", "gr", ":DroidReferences<CR>")
 ```
 
 ## License

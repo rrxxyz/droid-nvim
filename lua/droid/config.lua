@@ -15,26 +15,49 @@ local defaults = {
         },
     },
     lsp = {
-        enabled = true,
-        jre_path = nil, -- path to JRE 21+ (auto-detected from bundled/JAVA_HOME/system)
-        jdk_for_symbol_resolution = nil, -- JDK path for kotlin-lsp symbol resolution
-        jvm_args = {}, -- additional JVM arguments for kotlin-lsp
-        root_markers = nil, -- override if needed; kotlin-lsp auto-detects project root by default
-        suppress_diagnostics = {}, -- diagnostic codes to hide, e.g. { "PackageDirectoryMismatch", "FunctionName" }
-        inlay_hints = {
+        enabled = true, -- Master toggle for all LSPs
+        jre_path = nil, -- Shared JRE path (auto-detected from bundled/JAVA_HOME/system)
+
+        -- Kotlin LSP (kotlin-lsp / kotlin-language-server)
+        kotlin = {
             enabled = true,
-            parameters = true,
-            parameters_compiled = true,
-            parameters_excluded = false,
-            types_property = true,
-            types_variable = true,
-            function_return = true,
-            function_parameter = true,
-            lambda_return = true,
-            lambda_receivers_parameters = true,
-            value_ranges = true,
-            kotlin_time = true,
-            call_chains = false,
+            jdk_for_symbol_resolution = nil, -- JDK path for kotlin-lsp symbol resolution
+            jvm_args = {}, -- Additional JVM arguments
+            root_markers = nil, -- Override root detection
+            suppress_diagnostics = {}, -- Diagnostic codes to hide, e.g. { "PackageDirectoryMismatch" }
+            inlay_hints = {
+                enabled = true,
+                parameters = true,
+                parameters_compiled = true,
+                parameters_excluded = false,
+                types_property = true,
+                types_variable = true,
+                function_return = true,
+                function_parameter = true,
+                lambda_return = true,
+                lambda_receivers_parameters = true,
+                value_ranges = true,
+                kotlin_time = true,
+                call_chains = false,
+            },
+        },
+
+        -- Java LSP (jdtls)
+        java = {
+            enabled = true,
+            jvm_args = {}, -- Additional JVM arguments
+            root_markers = nil, -- Override root detection (defaults: gradlew, settings.gradle, etc.)
+            suppress_diagnostics = {}, -- Diagnostic codes to hide
+            inlay_hints = {
+                enabled = true,
+                parameters = true,
+            },
+        },
+
+        -- Groovy LSP (groovy-language-server)
+        groovy = {
+            enabled = true,
+            root_markers = nil, -- Override root detection (defaults: build.gradle, settings.gradle)
         },
     },
     android = {
@@ -49,6 +72,57 @@ local defaults = {
 }
 
 M.config = vim.deepcopy(defaults)
+
+--- Migrate old flat lsp config to new nested structure
+---@param cfg table
+---@return boolean migrated
+local function migrate_old_config(cfg)
+    if not cfg.lsp then
+        return false
+    end
+
+    -- Check if using old flat config (has inlay_hints directly under lsp, not under lsp.kotlin)
+    if cfg.lsp.inlay_hints and not cfg.lsp.kotlin then
+        vim.schedule(function()
+            vim.notify(
+                "droid.nvim: Old LSP config format detected.\n"
+                    .. "Please update to nested structure:\n"
+                    .. "  lsp = {\n"
+                    .. "    enabled = true,\n"
+                    .. "    kotlin = { inlay_hints = { ... } },\n"
+                    .. "    java = { enabled = true },\n"
+                    .. "    groovy = { enabled = true },\n"
+                    .. "  }\n"
+                    .. "See :help droid-config for details.",
+                vim.log.levels.WARN
+            )
+        end)
+
+        -- Auto-migrate: move old flat config to lsp.kotlin
+        local old_config = {
+            jdk_for_symbol_resolution = cfg.lsp.jdk_for_symbol_resolution,
+            jvm_args = cfg.lsp.jvm_args,
+            root_markers = cfg.lsp.root_markers,
+            suppress_diagnostics = cfg.lsp.suppress_diagnostics,
+            inlay_hints = cfg.lsp.inlay_hints,
+        }
+
+        -- Clear old flat keys
+        cfg.lsp.jdk_for_symbol_resolution = nil
+        cfg.lsp.jvm_args = nil
+        cfg.lsp.root_markers = nil
+        cfg.lsp.suppress_diagnostics = nil
+        cfg.lsp.inlay_hints = nil
+
+        -- Set nested kotlin config
+        cfg.lsp.kotlin = old_config
+        cfg.lsp.kotlin.enabled = true
+
+        return true
+    end
+
+    return false
+end
 
 local function validate_config(cfg)
     local valid_modes = { horizontal = true, vertical = true, float = true }
@@ -69,6 +143,7 @@ end
 
 function M.setup(opts)
     opts = opts or {}
+    migrate_old_config(opts)
     validate_config(opts)
     M.config = vim.tbl_deep_extend("force", M.config, opts)
 end

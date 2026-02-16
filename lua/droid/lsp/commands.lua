@@ -1,38 +1,81 @@
+--- LSP commands for droid.nvim
+--- Provides user commands for Kotlin and Java LSP operations
+
 local client = require "droid.lsp.client"
 
 local M = {}
 
-local function need_client()
-    local c = client.first { bufnr = 0 }
-    if not c then
-        vim.notify("kotlin_ls not attached", vim.log.levels.WARN)
+--- Get the appropriate LSP client for the current buffer
+---@return vim.lsp.Client|nil client
+---@return string|nil lsp_name
+local function get_buffer_client()
+    local ft = vim.bo.filetype
+
+    if ft == "kotlin" then
+        local c = client.kotlin { bufnr = 0 }
+        return c, c and "kotlin_ls" or nil
+    elseif ft == "java" then
+        local c = client.java { bufnr = 0 }
+        return c, c and "jdtls" or nil
+    elseif ft == "groovy" then
+        local c = client.groovy { bufnr = 0 }
+        return c, c and "groovy_ls" or nil
     end
-    return c
+
+    -- Fallback: try any droid LSP
+    local c = client.first { bufnr = 0 }
+    return c, c and c.name or nil
+end
+
+local function need_client()
+    local c, name = get_buffer_client()
+    if not c then
+        vim.notify("No LSP attached to current buffer", vim.log.levels.WARN)
+    end
+    return c, name
 end
 
 function M.setup()
     local cmd = vim.api.nvim_create_user_command
 
+    -- Organize Imports (Kotlin and Java)
     cmd("DroidImports", function()
-        if not need_client() then
+        local c, name = need_client()
+        if not c then
             return
         end
-        client.run_command("kotlin.organize.imports", { vim.uri_from_bufnr(0) }, function(err)
-            if err then
-                vim.schedule(function()
-                    vim.notify("Organize imports: " .. tostring(err), vim.log.levels.ERROR)
-                end)
-            end
-        end)
+
+        if name == "kotlin_ls" then
+            client.run_command_on("kotlin_ls", "kotlin.organize.imports", { vim.uri_from_bufnr(0) }, function(err)
+                if err then
+                    vim.schedule(function()
+                        vim.notify("Organize imports: " .. tostring(err), vim.log.levels.ERROR)
+                    end)
+                end
+            end)
+        elseif name == "jdtls" then
+            client.run_command_on("jdtls", "java.edit.organizeImports", { vim.uri_from_bufnr(0) }, function(err)
+                if err then
+                    vim.schedule(function()
+                        vim.notify("Organize imports: " .. tostring(err), vim.log.levels.ERROR)
+                    end)
+                end
+            end)
+        else
+            vim.notify("Organize imports not supported for " .. (name or "unknown LSP"), vim.log.levels.WARN)
+        end
     end, {})
 
+    -- Format (uses built-in vim.lsp.buf.format)
     cmd("DroidFormat", function()
-        if not need_client() then
+        local c, name = need_client()
+        if not c then
             return
         end
-        vim.lsp.buf.format { name = "kotlin_ls" }
+        vim.lsp.buf.format { name = name }
     end, {})
 
+    -- Document Symbols
     cmd("DroidSymbols", function()
         if not need_client() then
             return
@@ -40,6 +83,7 @@ function M.setup()
         vim.lsp.buf.document_symbol()
     end, {})
 
+    -- Workspace Symbols
     cmd("DroidWorkspaceSymbols", function()
         if not need_client() then
             return
@@ -47,6 +91,7 @@ function M.setup()
         vim.lsp.buf.workspace_symbol ""
     end, {})
 
+    -- References
     cmd("DroidReferences", function()
         if not need_client() then
             return
@@ -54,6 +99,7 @@ function M.setup()
         vim.lsp.buf.references()
     end, {})
 
+    -- Rename
     cmd("DroidRename", function()
         if not need_client() then
             return
@@ -61,6 +107,7 @@ function M.setup()
         vim.lsp.buf.rename()
     end, {})
 
+    -- Code Action
     cmd("DroidCodeAction", function()
         if not need_client() then
             return
@@ -68,6 +115,7 @@ function M.setup()
         vim.lsp.buf.code_action()
     end, {})
 
+    -- Quick Fix (diagnostics on current line)
     cmd("DroidQuickFix", function()
         if not need_client() then
             return
@@ -81,6 +129,7 @@ function M.setup()
         }
     end, {})
 
+    -- Toggle Inlay Hints
     cmd("DroidInlayHintsToggle", function()
         local bufnr = vim.api.nvim_get_current_buf()
         local enabled = vim.lsp.inlay_hint.is_enabled { bufnr = bufnr }
@@ -88,15 +137,19 @@ function M.setup()
         vim.notify("droid.nvim: inlay hints " .. (not enabled and "enabled" or "disabled"), vim.log.levels.INFO)
     end, {})
 
+    -- Toggle HINT-severity diagnostics
     cmd("DroidHintsToggle", function()
         require("droid.lsp.diagnostics").toggle_hints()
     end, {})
 
+    -- Export Workspace (Kotlin LSP specific)
     cmd("DroidExportWorkspace", function()
-        if not need_client() then
+        local c = client.kotlin { bufnr = 0 }
+        if not c then
+            vim.notify("kotlin_ls not attached (required for workspace export)", vim.log.levels.WARN)
             return
         end
-        client.run_command("exportWorkspace", { vim.fn.getcwd() }, function(err, result)
+        client.run_command_on("kotlin_ls", "exportWorkspace", { vim.fn.getcwd() }, function(err, result)
             vim.schedule(function()
                 if err then
                     vim.notify("Export failed: " .. tostring(err), vim.log.levels.ERROR)
