@@ -44,17 +44,16 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 -- lazy.nvim
 {
   "rrxxyz/droid-nvim",
+  ft = { "kotlin", "java", "groovy", "xml" },
   dependencies = {
     "nvim-treesitter/nvim-treesitter",
     "mason-org/mason.nvim", -- Recommended for auto-installing LSPs
   },
-  config = function()
-    require("droid").setup()
-  end,
+  opts = {},
 }
 ```
 
-After installation, install treesitter parsers for syntax highlighting:
+After installation, install treesitter parsers for syntax highlighting (Optional):
 
 ```vim
 :TSInstall kotlin java groovy
