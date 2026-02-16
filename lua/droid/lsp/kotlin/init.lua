@@ -274,10 +274,23 @@ function M.start(cfg)
         init_opts.defaultJdk = kotlin_cfg.jdk_for_symbol_resolution
     end
 
+    -- Default root markers for Android/Kotlin projects
+    local root_markers = kotlin_cfg.root_markers
+        or {
+            "gradlew",
+            "settings.gradle",
+            "settings.gradle.kts",
+            "build.gradle",
+            "build.gradle.kts",
+            "pom.xml",
+            "AndroidManifest.xml",
+            ".git",
+        }
+
     vim.lsp.config("kotlin_ls", {
         cmd = cmd,
         filetypes = { "kotlin" },
-        root_markers = kotlin_cfg.root_markers,
+        root_markers = root_markers,
         settings = settings,
         init_options = init_opts,
         capabilities = {
