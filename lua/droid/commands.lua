@@ -2,6 +2,7 @@ local gradle = require "droid.gradle"
 local android = require "droid.android"
 local logcat = require "droid.logcat"
 local actions = require "droid.actions"
+local ktlint = require "droid.ktlint"
 
 local M = {}
 
@@ -160,6 +161,18 @@ function M.setup_commands()
 
     vim.api.nvim_create_user_command("DroidMirror", function()
         android.mirror()
+    end, {})
+
+    vim.api.nvim_create_user_command("DroidKtlintFormat", function()
+        guarded("DroidKtlintFormat", function(done)
+            ktlint.format(done)
+        end)
+    end, {})
+
+    vim.api.nvim_create_user_command("DroidKtlintUpdateJar", function()
+        guarded("DroidKtlintUpdateJar", function(done)
+            ktlint.update_jar(done)
+        end)
     end, {})
 end
 

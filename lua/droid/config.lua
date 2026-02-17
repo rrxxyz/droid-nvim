@@ -69,6 +69,11 @@ local defaults = {
         boot_check_interval_ms = 3000,
         logcat_startup_delay_ms = 2000,
     },
+    ktlint = {
+        enabled = true,
+        compose_rules_version = "0.5.6", -- compose-rules jar version to download
+        jar_dir = nil, -- override storage dir (defaults to stdpath("data")/droid-nvim)
+    },
 }
 
 M.config = vim.deepcopy(defaults)
