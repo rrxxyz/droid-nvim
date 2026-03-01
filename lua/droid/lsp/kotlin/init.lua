@@ -24,17 +24,18 @@ local function find_kotlin_lsp()
     }
 end
 
---- Collect all .jar files under the package lib directory and join with `:`.
+--- Find the lib directory containing .jar files and return a wildcard classpath.
 --- Checks `lib/` (JetBrains kotlin-lsp) first, falls back to `server/lib/` (legacy).
+--- Uses Java wildcard classpath (`dir/*`) which preserves CodeSource locations.
 ---@param pkg_dir string
 ---@return string|nil classpath
-local function collect_jars(pkg_dir)
+local function find_lib_classpath(pkg_dir)
     for _, sub in ipairs { "/lib", "/server/lib" } do
         local lib = pkg_dir .. sub
         if vim.fn.isdirectory(lib) == 1 then
             local jars = vim.fn.glob(lib .. "/*.jar", false, true)
             if #jars > 0 then
-                return table.concat(jars, ":")
+                return lib .. "/*"
             end
         end
     end
@@ -191,7 +192,7 @@ function M.start(cfg)
     local cmd
 
     if pkg_dir then
-        local cp = collect_jars(pkg_dir)
+        local cp = find_lib_classpath(pkg_dir)
         if not cp then
             vim.notify("droid.nvim: no jars in " .. pkg_dir .. "/lib", vim.log.levels.ERROR)
             return
@@ -212,7 +213,6 @@ function M.start(cfg)
             "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
             "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
             "--add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED",
-            "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED",
             "--add-opens=java.base/jdk.internal.vm=ALL-UNNAMED",
             "--add-opens=java.base/sun.net.dns=ALL-UNNAMED",
             "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
@@ -252,7 +252,6 @@ function M.start(cfg)
             "--enable-native-access=ALL-UNNAMED",
             "-Djdk.lang.Process.launchMechanism=FORK",
             "-Djava.awt.headless=true",
-            "-Djava.system.class.loader=com.intellij.util.lang.PathClassLoader",
         })
         -- stylua: ignore end
         vim.list_extend(cmd, kotlin_cfg.jvm_args or {})
