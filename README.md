@@ -43,7 +43,7 @@ setx PATH "%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\
 ```lua
 -- lazy.nvim (recommended: pin to a specific version)
 {
-  "rrxxyz/droid-nvim",
+  "rizukirr/droid-nvim",
   tag = "v0.0.1-beta01",
   ft = { "kotlin", "java", "groovy", "xml" },
   dependencies = {
@@ -58,7 +58,7 @@ Or track latest (may include breaking changes):
 
 ```lua
 {
-  "rrxxyz/droid-nvim",
+  "rizukirr/droid-nvim",
   branch = "main",
   ft = { "kotlin", "java", "groovy", "xml" },
   dependencies = {
