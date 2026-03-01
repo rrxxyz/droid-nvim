@@ -243,25 +243,6 @@ function M.start(cfg)
     })
     vim.lsp.enable "jdtls"
 
-    -- Suppress specific diagnostic codes
-    local suppress = java_cfg.suppress_diagnostics or {}
-    if #suppress > 0 then
-        local codes = {}
-        for _, code in ipairs(suppress) do
-            codes[code] = true
-        end
-        local default_handler = vim.lsp.handlers["textDocument/publishDiagnostics"]
-        vim.lsp.handlers["textDocument/publishDiagnostics"] = function(e, result, ctx, handler_cfg)
-            local c = vim.lsp.get_client_by_id(ctx.client_id)
-            if c and c.name == "jdtls" and result and result.diagnostics then
-                result.diagnostics = vim.tbl_filter(function(d)
-                    return not codes[d.code]
-                end, result.diagnostics)
-            end
-            return default_handler(e, result, ctx, handler_cfg)
-        end
-    end
-
     -- Auto-enable inlay hints when jdtls attaches
     local ih = java_cfg.inlay_hints
     if ih and ih.enabled ~= false then

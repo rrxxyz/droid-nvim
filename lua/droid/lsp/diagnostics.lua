@@ -1,11 +1,38 @@
 local M = {}
 
+local config = require "droid.config"
+
 local hints_visible = true
 local original_set = nil
 
 --- Per-buffer, per-namespace storage of original (unfiltered) diagnostics.
 ---@type table<number, table<number, vim.Diagnostic[]>>
 local stored = {}
+
+--- Build a lookup set of suppressed diagnostic codes for a given filetype.
+---@param ft string
+---@return table<string|number, true>|nil
+local function get_suppressed_codes(ft)
+    local cfg = config.get()
+    local lang_cfg
+    if ft == "kotlin" then
+        lang_cfg = cfg.lsp.kotlin
+    elseif ft == "java" then
+        lang_cfg = cfg.lsp.java
+    end
+    if not lang_cfg then
+        return nil
+    end
+    local suppress = lang_cfg.suppress_diagnostics
+    if not suppress or #suppress == 0 then
+        return nil
+    end
+    local codes = {}
+    for _, code in ipairs(suppress) do
+        codes[code] = true
+    end
+    return codes
+end
 
 --- Filter out HINT-severity diagnostics.
 ---@param diagnostics vim.Diagnostic[]
@@ -16,13 +43,38 @@ local function filter_hints(diagnostics)
     end, diagnostics)
 end
 
+--- Filter out diagnostics whose code matches the suppression list.
+---@param diagnostics vim.Diagnostic[]
+---@param codes table<string|number, true>
+---@return vim.Diagnostic[]
+local function filter_suppressed(diagnostics, codes)
+    return vim.tbl_filter(function(d)
+        return not codes[d.code]
+    end, diagnostics)
+end
+
+--- Apply all active filters to a diagnostic list.
+---@param diagnostics vim.Diagnostic[]
+---@param ft string
+---@return vim.Diagnostic[]
+local function apply_filters(diagnostics, ft)
+    local codes = get_suppressed_codes(ft)
+    if codes then
+        diagnostics = filter_suppressed(diagnostics, codes)
+    end
+    if not hints_visible then
+        diagnostics = filter_hints(diagnostics)
+    end
+    return diagnostics
+end
+
 --- Refresh diagnostics for all stored buffers using current toggle state.
 local function refresh_all()
     for bufnr, namespaces in pairs(stored) do
         if vim.api.nvim_buf_is_valid(bufnr) then
+            local ft = vim.bo[bufnr].filetype
             for ns, diags in pairs(namespaces) do
-                local to_set = hints_visible and diags or filter_hints(diags)
-                original_set(ns, bufnr, to_set)
+                original_set(ns, bufnr, apply_filters(diags, ft))
             end
         else
             stored[bufnr] = nil
@@ -54,10 +106,7 @@ function M.setup()
                 stored[bufnr] = {}
             end
             stored[bufnr][ns] = vim.deepcopy(diagnostics)
-
-            if not hints_visible then
-                diagnostics = filter_hints(diagnostics)
-            end
+            diagnostics = apply_filters(diagnostics, ft)
         end
         return original_set(ns, bufnr, diagnostics, opts)
     end
